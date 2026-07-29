@@ -1,0 +1,44 @@
+import os
+import ipaddress
+
+# Static "go away" response
+FORBIDDEN = {
+    'status': 403,
+    'headers': {
+        "content-type": [
+            {
+                'key': 'Content-Type',
+                'value': 'text/html'
+            }
+        ]
+    },
+    'body': '<html><head><title>403 Forbidden</title></head><body><h1>403 Forbidden</h1><p>Your IP address is not allowed.</p></body></html>'
+}
+
+# Turn the allowed CIDR list into network objects, just once for efficiency
+allowed_cidrs = [
+%{ for cidr in allowed_cidrs ~}
+  ipaddress.IPv4Network("${cidr}"),
+%{ endfor ~}
+]
+
+# Lambda entrypoint
+def lambda_handler(event, context):
+    request = event['Records'][0]['cf']['request']
+
+    try:
+        clientIp = ipaddress.IPv4Address(request['clientIp'])
+    except ipaddress.AddressValueError:
+        # This is an IPv6 address or (unlikely) otherwise not valid
+        return FORBIDDEN
+
+    if is_allowed(clientIp):
+        return request
+    else:
+        return FORBIDDEN
+
+def is_allowed(ip):
+    for cidr in allowed_cidrs:
+        if ip in cidr:
+            return True
+    return False
